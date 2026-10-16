@@ -132,13 +132,21 @@ export function computeUnusedFloorArea(
     if (governing !== null) basis += ' Lot area or building area is missing, so no estimate is possible.';
     return { estimate_sqft: null, overbuilt: false, allowed_floor_area_sqft: null, governing_far: governing, basis, caveats };
   }
-  const allowed = governing * lotArea;
-  const diff = allowed - buildingArea;
+  // Headline estimate uses residential FAR when listed (matches NYRezone's methodology); the
+  // overbuilt flag uses the highest FAR so community-facility or commercial uses never make a
+  // lot look non-compliant. Community-facility FAR alone must not inflate a residential lot's headroom.
+  const resid = far.residential ?? 0;
+  const estFar = resid > 0 ? resid : governing;
+  if (resid > 0 && resid < governing) {
+    basis = `Estimate uses residential FAR ${resid}; MapPLUTO also lists up to ${governing} for other uses (commercial / community-facility).`;
+  }
+  const allowed = estFar * lotArea;
+  const overbuilt = buildingArea > governing * lotArea;
   return {
-    estimate_sqft: Math.max(0, Math.round(diff)),
-    overbuilt: diff < 0,
-    allowed_floor_area_sqft: Math.round(allowed),
-    governing_far: governing,
+    estimate_sqft: Math.max(0, Math.round(allowed - buildingArea)),
+    overbuilt,
+    allowed_floor_area_sqft: overbuilt ? Math.round(governing * lotArea) : Math.round(allowed),
+    governing_far: overbuilt ? governing : estFar,
     basis,
     caveats,
   };
