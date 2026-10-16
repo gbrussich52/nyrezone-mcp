@@ -1,0 +1,19 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.gbrussich52/nyrezone-mcp",
+  "description": "NYC zoning lookups for AI assistants: tax-lot zoning, FAR and unused floor area, and zoning district rules, from public NYRezone data.",
+  "version": "0.1.0",
+  "websiteUrl": "https://nyrezone.com",
+  "repository": {
+    "url": "https://github.com/gbrussich52/nyrezone-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "nyrezone-mcp",
+      "version": "0.1.0",
+      "transport": { "type": "stdio" }
+    }
+  ]
+}
