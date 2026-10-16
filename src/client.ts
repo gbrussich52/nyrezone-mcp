@@ -37,6 +37,7 @@ export interface FetchedText {
   body: string;
 }
 
+const MAX_CACHE = 500;
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export class HttpClient {
@@ -103,12 +104,20 @@ export class HttpClient {
       if (res.status === 429) {
         throw new UpstreamError('rate_limited', 'The upstream service asked us to slow down (HTTP 429); try again in a minute.', 429);
       }
+      // A redirect must not carry us (and our User-Agent) off the two hosts we were pointed at.
+      if (res.url) {
+        let origin = '';
+        try { origin = new URL(res.url).origin; } catch { /* handled below */ }
+        const allowed = [this.nyrezoneBase, this.geosearchBase].map((b) => new URL(b).origin);
+        if (!allowed.includes(origin)) throw new UpstreamError('http', 'Upstream redirected to an unexpected host; response rejected.');
+      }
       const body = await this.readCapped(res);
       if (res.status !== 404 && !res.ok) {
         throw new UpstreamError('http', `Upstream returned HTTP ${res.status}.`, res.status);
       }
       const value: FetchedText = { status: res.status, body };
       this.cache.set(url, { at: this.now(), value });
+      this.evict();
       return value;
     } catch (err) {
       if (err instanceof UpstreamError) throw err;
@@ -117,6 +126,22 @@ export class HttpClient {
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  /** Bound memory: past MAX_CACHE entries drop expired ones first, then the oldest. */
+  private evict(): void {
+    if (this.cache.size <= MAX_CACHE) return;
+    const t = this.now();
+    for (const [k, v] of this.cache) if (t - v.at >= this.cacheTtlMs) this.cache.delete(k);
+    while (this.cache.size > MAX_CACHE) {
+      const oldest = this.cache.keys().next().value;
+      if (oldest === undefined) break;
+      this.cache.delete(oldest);
+    }
+  }
+
+  get cacheSize(): number {
+    return this.cache.size;
   }
 
   private async readCapped(res: Response): Promise<string> {

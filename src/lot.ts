@@ -104,23 +104,28 @@ export function computeUnusedFloorArea(
 ): UnusedFloorArea {
   const caveats = [
     'Simple MapPLUTO-based estimate: maximum FAR x lot area minus existing building area.',
+    'Building area is MapPLUTO gross area, which is larger than zoning floor area.',
     'Ignores street width, special districts, overlays, lot splits, mapped streets, and City of Yes / Universal Affordability Preference bonuses, which can change the true maximum.',
   ];
   if (splitZone) caveats.push('This lot spans more than one zoning district; MapPLUTO reports a single set of FAR values, so the estimate may be off.');
 
+  // Highest listed FAR governs: a commercial or community-facility FAR can exceed residential
+  // (e.g. C5-3 lists residential 10 but commercial 15), and using residential alone would
+  // wrongly flag such lots as overbuilt.
+  const candidates: [string, number][] = [
+    ['residential', far.residential ?? 0],
+    ['commercial', far.commercial ?? 0],
+    ['community-facility', far.community_facility ?? 0],
+  ];
+  const top = Math.max(...candidates.map(([, v]) => v));
   let governing: number | null = null;
   let basis: string;
-  if (far.residential !== null && far.residential > 0) {
-    governing = far.residential;
-    basis = `Residential FAR ${governing} from MapPLUTO (the figure NYRezone uses for "unused floor area").`;
+  if (top > 0) {
+    governing = top;
+    const names = candidates.filter(([, v]) => v === top).map(([n]) => n).join(' / ');
+    basis = `Highest FAR MapPLUTO lists is ${top} (${names}).`;
   } else {
-    const alt = Math.max(far.commercial ?? 0, far.community_facility ?? 0);
-    if (alt > 0) {
-      governing = alt;
-      basis = `No residential FAR on record; used the higher of commercial / community-facility FAR (${alt}).`;
-    } else {
-      basis = 'MapPLUTO lists no maximum FAR for this lot, so no estimate is possible.';
-    }
+    basis = 'MapPLUTO lists no maximum FAR for this lot, so no estimate is possible.';
   }
 
   if (governing === null || lotArea === null || lotArea <= 0 || buildingArea === null) {

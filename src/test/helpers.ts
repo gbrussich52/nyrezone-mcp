@@ -33,6 +33,11 @@ export function route(rawUrl: string): Routed | null {
     const bbl = u.searchParams.get('bbl');
     if (bbl === '3052410015') return json(fx('pluto_3052410015.json'));
     if (bbl === '1008350041') return json(fx('pluto_1008350041.json'));
+    // Synthetic bodies (not recorded) for upstream-misbehaviour cases.
+    if (bbl === '3030700001') return json(fx('pluto_3052410015.json').replace('3052410015', '3030700001')); // stand-in row; the test is about which BBL was resolved
+    if (bbl === '3000000001') return json('{"error":"boom"}');
+    if (bbl === '3000000002') return json('{}');
+    if (bbl === '3000000003') return json(fx('pluto_3052410015.json').replace('"zonedist1":"R7A"', '"zonedist1":"R99"'));
     return json(fx('pluto_404.json'), 404);
   }
   if (u.pathname === '/zoning') return html(fx('zoning.html'));
@@ -45,6 +50,15 @@ export function route(rawUrl: string): Routed | null {
   if (u.pathname === '/v2/search') {
     const text = (u.searchParams.get('text') ?? '').toLowerCase();
     if (text.includes('1187 ocean')) return json(fx('geo_1187.json'));
+    if (text.includes('100 manhattan')) {
+      const d = JSON.parse(fx('geo_100manhattan.json')) as { geocoding: { query: { parsed_text: Record<string, string> } } };
+      // Without a borough in the query, Pelias gives no locality/admin to hint from.
+      if (!text.includes('brooklyn')) {
+        delete d.geocoding.query.parsed_text.locality;
+        delete d.geocoding.query.parsed_text.admin;
+      }
+      return json(JSON.stringify(d));
+    }
     if (text.includes('100 main')) return json(fx('geo_100main.json'));
     if (text.includes('99999 nowhere')) return json(fx('geo_none.json'));
     if (text.includes('50 test')) return json(ambiguousGeo());

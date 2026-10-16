@@ -11,6 +11,7 @@
   "packages": [
     {
       "registryType": "npm",
+      "runtimeHint": "npx",
       "identifier": "nyrezone-mcp",
       "version": "0.1.0",
       "transport": { "type": "stdio" }

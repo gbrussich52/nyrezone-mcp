@@ -183,10 +183,23 @@ export async function lookupLot(client: HttpClient, q: LotQuery): Promise<Outcom
     } catch {
       throw new UpstreamError('parse', 'Lot data came back in an unreadable format.');
     }
+    // A 200 with an error body or an empty object must not render as a lot full of "unknown".
+    const rr = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
+    const has = (k: string) => rr[k] !== undefined && rr[k] !== null && rr[k] !== '';
+    if (rr.error !== undefined || (!has('zonedist1') && !has('lotarea'))) {
+      return fail(`The data source returned no usable lot data for BBL ${bbl}.`);
+    }
     const lot = mapPlutoRow(raw, bbl);
     const vint = await vintage(client);
     const reportUrl = `${client.nyrezoneBase}/map?bbl=${bbl}`;
-    const slugs = lot.zoning_districts.map((z) => z.toLowerCase().replace(/\//g, '-'));
+    // Only link district pages that exist; the index is a nicety, so its failure must not fail the lot.
+    let known: Set<string> | null = null;
+    try {
+      known = new Set((await loadIndex(client)).map((d) => d.slug));
+    } catch {
+      known = null;
+    }
+    const slugs = lot.zoning_districts.map((z) => z.toLowerCase().replace(/\//g, '-')).filter((s) => known === null || known.has(s));
     const pages = slugs.map((s) => districtUrl(client, s));
     const source = `Source: ${vint} via ${client.nyrezoneBase}. District pages: ${pages.join(', ') || 'n/a'}. Full report: ${reportUrl}. ${DISCLAIMER}`;
 
@@ -202,7 +215,7 @@ export async function lookupLot(client: HttpClient, q: LotQuery): Promise<Outcom
       u.estimate_sqft === null
         ? `Unused floor area: not estimable. ${u.basis}`
         : u.overbuilt
-          ? `Unused floor area: about 0 sq ft; existing building (${fmt(lot.building_area_sqft)} sq ft) exceeds the FAR-based maximum (${fmt(u.allowed_floor_area_sqft)} sq ft), so the lot is likely built beyond current zoning. ${u.basis}`
+          ? `Unused floor area: about 0 sq ft; existing gross building area (${fmt(lot.building_area_sqft)} sq ft) exceeds the highest FAR MapPLUTO lists (${u.governing_far} x lot area = ${fmt(u.allowed_floor_area_sqft)} sq ft). MapPLUTO building area is gross, not zoning floor area, so this is not evidence of non-compliance. ${u.basis}`
           : `Unused floor area (estimate): about ${fmt(u.estimate_sqft, ' sq ft')} of ${fmt(u.allowed_floor_area_sqft)} sq ft allowed. ${u.basis}`,
       `Caveat: ${u.caveats.join(' ')}`,
       '',

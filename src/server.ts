@@ -110,7 +110,7 @@ export function createServer(clientOptions: ClientOptions = {}): McpServer {
     {
       title: 'List NYC zoning districts',
       description:
-        'List the NYC zoning district codes NYRezone documents (51), each with a one-line summary (its district family description). Optionally filter by family, e.g. R6 or C4.',
+        'List the NYC zoning district codes NYRezone documents, each with a one-line summary (its district family description). Optionally filter by family, e.g. R6 or C4.',
       inputSchema: z.object({ family: z.string().optional().describe('Optional family filter such as R6, C4, M1.') }),
       outputSchema: z.object({
         count: z.number(),

@@ -156,3 +156,59 @@ test('a changed page format yields a clear error, not wrong numbers', async () =
   const client = new HttpClient({ fetchImpl, minIntervalMs: 0 });
   assert.match(err(await getDistrict(client, 'R6A')), /format looks different/);
 });
+
+test('borough hint comes from the borough part, not the street name: "100 Manhattan Ave, Brooklyn" is the Brooklyn lot', async () => {
+  const { client } = setup();
+  const text = okText(await lookupLot(client, { address: '100 Manhattan Ave, Brooklyn' }));
+  assert.match(text, /BBL 3030700001/);
+  assert.ok(!/1018407501/.test(text));
+});
+
+test('same street name with no borough given is ambiguous across boroughs, never a guess', async () => {
+  const { client } = setup();
+  const msg = err(await lookupLot(client, { address: '100 Manhattan Ave' }));
+  assert.match(msg, /more than one tax lot/);
+  assert.match(msg, /3030700001/);
+  assert.match(msg, /1018407501/);
+});
+
+test('a 200 with an error body or an empty object is an error, not a lot of unknowns', async () => {
+  const { client } = setup();
+  assert.match(err(await lookupLot(client, { bbl: '3000000001' })), /no usable lot data/);
+  assert.match(err(await lookupLot(client, { bbl: '3000000002' })), /no usable lot data/);
+});
+
+test('district_pages only links districts that exist in the index', async () => {
+  const { client } = setup();
+  const o = await lookupLot(client, { bbl: '3000000003' });
+  const text = okText(o);
+  assert.ok(!/zoning\/r99/.test(text));
+  if (o.ok) assert.deepEqual(o.data.district_pages, []);
+});
+
+test('an index failure does not fail the lot lookup', async () => {
+  const m = mockFetch();
+  const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+    if (new URL(String(input)).pathname === '/zoning') throw new Error('down');
+    return m.fetchImpl(input, init);
+  }) as typeof fetch;
+  const client = new HttpClient({ fetchImpl, minIntervalMs: 0 });
+  assert.match(okText(await lookupLot(client, { bbl: '3052410015' })), /Zoning: R7A/);
+});
+
+test('cache is bounded at 500 entries', async () => {
+  const fetchImpl = (async () => new Response('x', { status: 200 })) as typeof fetch;
+  const client = new HttpClient({ fetchImpl, minIntervalMs: 0, maxRequestsPerMinute: 10_000 });
+  for (let i = 0; i < 520; i++) await client.getText(`https://nyrezone.com/p/${i}`, 'text/html');
+  assert.equal(client.cacheSize, 500);
+});
+
+test('a response that ends up on another origin is rejected', async () => {
+  const fetchImpl = (async () => {
+    const r = new Response('x', { status: 200 });
+    Object.defineProperty(r, 'url', { value: 'https://evil.example/landed' });
+    return r;
+  }) as typeof fetch;
+  const client = new HttpClient({ fetchImpl, minIntervalMs: 0 });
+  await assert.rejects(() => client.getText('https://nyrezone.com/api/pluto?bbl=1', 'application/json'), /unexpected host/);
+});

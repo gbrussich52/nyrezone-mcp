@@ -117,3 +117,12 @@ test('unused floor area: missing inputs give no estimate rather than a number', 
   assert.equal(computeUnusedFloorArea(null, 500, { ...none, residential: 2 }, false).estimate_sqft, null);
   assert.equal(computeUnusedFloorArea(1000, 500, { ...none, commercial: 2 }, false).estimate_sqft, 1500);
 });
+
+test('unused floor area: commercial FAR above residential governs, so a C5-3 style lot is not flagged overbuilt', () => {
+  const u = computeUnusedFloorArea(10000, 120000, { residential: 10, commercial: 15, community_facility: 0 }, false);
+  assert.equal(u.overbuilt, false);
+  assert.equal(u.governing_far, 15);
+  assert.equal(u.estimate_sqft, 30000);
+  assert.match(u.basis, /commercial/);
+  assert.ok(u.caveats.some((c) => /gross area/.test(c)));
+});

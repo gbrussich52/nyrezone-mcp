@@ -95,8 +95,10 @@ export async function resolveAddress(client: HttpClient, rawAddress: string): Pr
   const street = normalizeStreet(parsed.street ?? fallback?.[2] ?? '');
   if (!house || !street) throw new AddressNotFoundError();
 
-  // Optional borough hint from the text the user typed.
-  const hintText = `${parsed.locality ?? ''} ${parsed.admin ?? ''} ${address}`.toUpperCase();
+  // Borough hint only from Pelias' parsed locality/admin and the text after the first comma.
+  // Scanning the whole string would read "Manhattan" in "100 Manhattan Ave, Brooklyn" as the borough.
+  const tail = address.split(',').slice(1).join(' ');
+  const hintText = `${parsed.locality ?? ''} ${parsed.admin ?? ''} ${tail}`.toUpperCase();
   let boroughHint: string | null = null;
   for (const [word, name] of Object.entries(BOROUGH_WORDS)) {
     if (new RegExp(`(^|[^A-Z])${word}([^A-Z]|$)`).test(hintText)) {
