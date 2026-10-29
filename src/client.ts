@@ -2,7 +2,7 @@
 // the network goes through here so the politeness rules (User-Agent, cache,
 // serialized requests, request cap, timeout, size cap) live in one place.
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.0';
 export const REPO_URL = 'https://github.com/gbrussich52/nyrezone-mcp';
 
 export type UpstreamKind = 'timeout' | 'http' | 'network' | 'rate_limited' | 'too_large' | 'parse';

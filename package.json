@@ -1,7 +1,7 @@
 {
   "name": "nyrezone-mcp",
-  "version": "0.1.0",
-  "description": "NYRezone MCP - NYC zoning districts and tax-lot lookups (zoning, FAR, unused floor area) from public NYRezone / MapPLUTO data",
+  "version": "0.2.0",
+  "description": "NYRezone MCP - recorded NYC parcel and FAR fields plus NYRezone HTML district summaries",
   "type": "module",
   "bin": { "nyrezone-mcp": "./dist/cli.js" },
   "main": "./dist/server.js",
@@ -15,11 +15,11 @@
   },
   "engines": { "node": ">=20" },
   "dependencies": {
-    "@modelcontextprotocol/server": "2.0.0",
-    "zod": "4.6.5"
+    "@modelcontextprotocol/server": "2.4.0",
+    "zod": "4.6.7"
   },
   "devDependencies": {
-    "@modelcontextprotocol/client": "2.0.0",
+    "@modelcontextprotocol/client": "2.4.0",
     "@types/node": "22.20.3",
     "typescript": "7.0.2"
   },

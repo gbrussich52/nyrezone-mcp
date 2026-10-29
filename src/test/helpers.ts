@@ -32,6 +32,7 @@ export function route(rawUrl: string): Routed | null {
   if (u.pathname === '/api/pluto') {
     const bbl = u.searchParams.get('bbl');
     if (bbl === '3052410015') return json(fx('pluto_3052410015.json'));
+    if (bbl === '3000000004') return json(JSON.stringify({ ...JSON.parse(fx('pluto_1008350041.json')), splitzone: false }));
     if (bbl === '1008350041') return json(fx('pluto_1008350041.json'));
     // Synthetic bodies (not recorded) for upstream-misbehaviour cases.
     if (bbl === '3030700001') return json(fx('pluto_3052410015.json').replace('3052410015', '3030700001')); // stand-in row; the test is about which BBL was resolved

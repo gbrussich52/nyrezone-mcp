@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { HttpClient } from '../client.js';
 import { getDistrict, listDistricts, lookupLot, type Outcome } from '../service.js';
-import { mockFetch } from './helpers.js';
+import { fx, mockFetch } from './helpers.js';
 
 function setup(opts: ConstructorParameters<typeof HttpClient>[0] = {}) {
   const m = mockFetch();
@@ -18,16 +18,17 @@ function okText<T>(o: Outcome<T>): string {
   return (o as { text: string }).text;
 }
 
-test('lookup_lot by BBL returns zoning, FAR, areas, unused estimate and the source line', async () => {
+test('lookup_lot by BBL returns recorded zoning, FAR and areas without capacity calculations', async () => {
   const { client } = setup();
   const o = await lookupLot(client, { bbl: '3052410015' });
   const text = okText(o);
   assert.match(text, /Zoning: R7A/);
   assert.match(text, /Lot area: 4,675 sq ft/);
-  assert.match(text, /about 16,094 sq ft/);
-  assert.match(text, /Source: NYC MapPLUTO 26v2/);
+  assert.match(text, /development capacity: not determined from recorded parcel data/);
+  assert.doesNotMatch(text, /16,094|sq ft allowed|overbuilt|FAR-based estimate/i);
+  assert.match(text, /MapPLUTO release reported by NYRezone: MapPLUTO 26v2/);
   assert.match(text, /https:\/\/nyrezone\.com\/zoning\/r7a/);
-  assert.match(text, /Full report: https:\/\/nyrezone\.com\/map\?bbl=3052410015/);
+  assert.match(text, /Public lot map: https:\/\/nyrezone\.com\/map\?bbl=3052410015/);
   assert.match(text, /not legal, architectural/);
   assert.ok(!/TEST OWNER NAME/i.test(text) && !/owner/i.test(text), 'no owner data in output');
   if (o.ok) assert.ok(!JSON.stringify(o.data).toLowerCase().includes('owner'));
@@ -91,10 +92,13 @@ test('get_zoning_district returns rules and a source line (R6A, any case, with s
   const text = okText(await getDistrict(client, 'r6a'));
   assert.match(text, /Max residential FAR: 3\.0/);
   assert.match(text, /Max building height: 75 ft/);
-  assert.match(text, /Source: NYC MapPLUTO 26v2/);
+  assert.match(text, /MapPLUTO release reported by NYRezone: MapPLUTO 26v2/);
   assert.match(text, /https:\/\/nyrezone\.com\/zoning\/r6a/);
+  assert.match(text, /Source: NYRezone HTML district summary/);
+  assert.match(text, /not independently verified against the NYC Zoning Resolution/);
+  assert.doesNotMatch(text, /rule values from the NYC Zoning Resolution/);
   const slash = await getDistrict(client, ' m1-2/r6a ');
-  assert.match(okText(slash), /no verified bulk\/height\/setback rules/);
+  assert.match(okText(slash), /no bulk\/height\/setback rules table/);
 });
 
 test('get_zoning_district lists valid codes for an unknown or malformed code', async () => {
@@ -211,4 +215,37 @@ test('a response that ends up on another origin is rejected', async () => {
   }) as typeof fetch;
   const client = new HttpClient({ fetchImpl, minIntervalMs: 0 });
   await assert.rejects(() => client.getText('https://nyrezone.com/api/pluto?bbl=1', 'application/json'), /unexpected host/);
+});
+
+test('lot source labels an unavailable or missing methodology stamp unknown without guessing', async () => {
+  for (const mode of ['network', '404', 'missing']) {
+    const m = mockFetch();
+    const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+      if (new URL(String(input)).pathname === '/methodology') {
+        if (mode === 'network') throw new Error('down');
+        return new Response('<html>no release stamp</html>', { status: mode === '404' ? 404 : 200 });
+      }
+      return m.fetchImpl(input, init);
+    }) as typeof fetch;
+    const o = await lookupLot(new HttpClient({ fetchImpl, minIntervalMs: 0 }), { bbl: '3052410015' });
+    const text = okText(o);
+    assert.match(text, /MapPLUTO release reported by NYRezone: unknown/);
+    assert.match(text, /not independently validated for this result/);
+    assert.doesNotMatch(text, /26v2|checked \d/);
+  }
+});
+
+test('district source labels a missing page stamp unknown and keeps scraped-summary provenance', async () => {
+  const m = mockFetch();
+  const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+    if (new URL(String(input)).pathname === '/zoning/r6a') {
+      return new Response(fx('zoning_r6a.html').replaceAll('MapPLUTO 26v2', 'MapPLUTO unknown'));
+    }
+    return m.fetchImpl(input, init);
+  }) as typeof fetch;
+  const o = await getDistrict(new HttpClient({ fetchImpl, minIntervalMs: 0 }), 'R6A');
+  const text = okText(o);
+  assert.match(text, /Source: NYRezone HTML district summary/);
+  assert.match(text, /MapPLUTO release reported by NYRezone: unknown/);
+  if (o.ok) assert.equal(o.data.dataVintage, null);
 });
