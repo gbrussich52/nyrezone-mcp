@@ -1,8 +1,8 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.gbrussich52/nyrezone-mcp",
-  "description": "NYC zoning for AI assistants: lot zoning, FAR, unused floor area, district rules (NYRezone data).",
-  "version": "0.1.0",
+  "description": "Recorded NYC parcel/FAR fields and NYRezone HTML district summaries; no capacity determination.",
+  "version": "0.2.0",
   "websiteUrl": "https://nyrezone.com",
   "repository": {
     "url": "https://github.com/gbrussich52/nyrezone-mcp",
@@ -13,7 +13,7 @@
       "registryType": "npm",
       "runtimeHint": "npx",
       "identifier": "nyrezone-mcp",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "transport": {
         "type": "stdio"
       }

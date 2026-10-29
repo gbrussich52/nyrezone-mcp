@@ -71,12 +71,11 @@ export interface LotRecord {
 }
 
 export interface UnusedFloorArea {
-  /** Estimated unused floor area in sq ft, or null when the inputs are missing. */
-  estimate_sqft: number | null;
-  /** True when existing building area already exceeds the FAR-based maximum. */
-  overbuilt: boolean;
-  allowed_floor_area_sqft: number | null;
-  governing_far: number | null;
+  /** Deprecated compatibility fields: recorded parcel data does not determine capacity. */
+  estimate_sqft: null;
+  overbuilt: null;
+  allowed_floor_area_sqft: null;
+  governing_far: null;
   basis: string;
   caveats: string[];
 }
@@ -96,59 +95,19 @@ function str(v: unknown): string | null {
 
 const round = (n: number, places: number) => Math.round(n * 10 ** places) / 10 ** places;
 
-export function computeUnusedFloorArea(
-  lotArea: number | null,
-  buildingArea: number | null,
-  far: { residential: number | null; commercial: number | null; community_facility: number | null },
-  splitZone: boolean,
-): UnusedFloorArea {
-  const caveats = [
-    'Simple MapPLUTO-based estimate: maximum FAR x lot area minus existing building area.',
-    'Building area is MapPLUTO gross area, which is larger than zoning floor area.',
-    'Ignores street width, special districts, overlays, lot splits, mapped streets, and City of Yes / Universal Affordability Preference bonuses, which can change the true maximum.',
-  ];
-  if (splitZone) caveats.push('This lot spans more than one zoning district; MapPLUTO reports a single set of FAR values, so the estimate may be off.');
-
-  // Highest listed FAR governs: a commercial or community-facility FAR can exceed residential
-  // (e.g. C5-3 lists residential 10 but commercial 15), and using residential alone would
-  // wrongly flag such lots as overbuilt.
-  const candidates: [string, number][] = [
-    ['residential', far.residential ?? 0],
-    ['commercial', far.commercial ?? 0],
-    ['community-facility', far.community_facility ?? 0],
-  ];
-  const top = Math.max(...candidates.map(([, v]) => v));
-  let governing: number | null = null;
-  let basis: string;
-  if (top > 0) {
-    governing = top;
-    const names = candidates.filter(([, v]) => v === top).map(([n]) => n).join(' / ');
-    basis = `Highest FAR MapPLUTO lists is ${top} (${names}).`;
-  } else {
-    basis = 'MapPLUTO lists no maximum FAR for this lot, so no estimate is possible.';
-  }
-
-  if (governing === null || lotArea === null || lotArea <= 0 || buildingArea === null) {
-    if (governing !== null) basis += ' Lot area or building area is missing, so no estimate is possible.';
-    return { estimate_sqft: null, overbuilt: false, allowed_floor_area_sqft: null, governing_far: governing, basis, caveats };
-  }
-  // Headline estimate uses residential FAR when listed (matches NYRezone's methodology); the
-  // overbuilt flag uses the highest FAR so community-facility or commercial uses never make a
-  // lot look non-compliant. Community-facility FAR alone must not inflate a residential lot's headroom.
-  const resid = far.residential ?? 0;
-  const estFar = resid > 0 ? resid : governing;
-  if (resid > 0 && resid < governing) {
-    basis = `Estimate uses residential FAR ${resid}; MapPLUTO also lists up to ${governing} for other uses (commercial / community-facility).`;
-  }
-  const allowed = estFar * lotArea;
-  const overbuilt = buildingArea > governing * lotArea;
+function undeterminedFloorArea(): UnusedFloorArea {
   return {
-    estimate_sqft: Math.max(0, Math.round(allowed - buildingArea)),
-    overbuilt,
-    allowed_floor_area_sqft: overbuilt ? Math.round(governing * lotArea) : Math.round(allowed),
-    governing_far: overbuilt ? governing : estFar,
-    basis,
-    caveats,
+    estimate_sqft: null,
+    overbuilt: null,
+    allowed_floor_area_sqft: null,
+    governing_far: null,
+    basis: 'not determined from recorded parcel data',
+    caveats: [
+      'MapPLUTO building area is gross building area, not zoning floor area.',
+      'Recorded FAR fields do not establish an applicable FAR or legally permitted floor area for this parcel.',
+      'District boundaries and split-zone geometry, applicable uses, special districts, overlays, bonuses, zoning-lot history and current rules require separate verification.',
+      'Unused development rights, development capacity and zoning compliance are not determined by this tool.',
+    ],
   };
 }
 
@@ -204,6 +163,6 @@ export function mapPlutoRow(raw: unknown, bbl: string): LotRecord {
     year_built: yearBuilt && yearBuilt > 0 ? yearBuilt : null,
     built_far: builtFar === null ? null : round(builtFar, 2),
     max_far: farRounded,
-    unused_floor_area: computeUnusedFloorArea(lotArea, buildingArea, far, splitZone),
+    unused_floor_area: undeterminedFloorArea(),
   };
 }

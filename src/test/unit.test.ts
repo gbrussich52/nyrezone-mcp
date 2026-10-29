@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeUnusedFloorArea, InputError, mapPlutoRow, parseBbl } from '../lot.js';
+import { InputError, mapPlutoRow, parseBbl } from '../lot.js';
 import { normalizeStreet, validateAddress } from '../geocode.js';
 import { decodeText, ParseError, parseDistrictPage, parseVintage, parseZoningIndex } from '../parse.js';
 import { fx } from './helpers.js';
@@ -94,42 +94,57 @@ test('mapPlutoRow never carries owner or assessment fields', () => {
   assert.deepEqual(lot.land_use, { code: '01', label: 'One & Two Family Buildings' });
 });
 
-test('unused floor area: FAR x lot area minus building area', () => {
+const noCapacity = {
+  estimate_sqft: null,
+  allowed_floor_area_sqft: null,
+  governing_far: null,
+  overbuilt: null,
+};
+
+function assertNoCapacity(lot: ReturnType<typeof mapPlutoRow>) {
+  for (const [key, value] of Object.entries(noCapacity)) {
+    assert.equal(lot.unused_floor_area[key as keyof typeof noCapacity], value, key);
+  }
+  assert.equal(lot.unused_floor_area.basis, 'not determined from recorded parcel data');
+  assert.match(lot.unused_floor_area.caveats.join(' '), /gross building area, not zoning floor area/);
+}
+
+test('the former 16,094 sq ft example retains recorded facts but no capacity calculation', () => {
   const lot = mapPlutoRow(JSON.parse(fx('pluto_3052410015.json')), '3052410015');
-  // 4.0 x 4675 = 18700; minus 2606 = 16094
-  assert.equal(lot.unused_floor_area.allowed_floor_area_sqft, 18700);
-  assert.equal(lot.unused_floor_area.estimate_sqft, 16094);
-  assert.equal(lot.unused_floor_area.overbuilt, false);
+  assertNoCapacity(lot);
+  assert.equal(lot.lot_area_sqft, 4675);
+  assert.equal(lot.building_area_sqft, 2606);
+  assert.equal(lot.built_far, 0.56);
+  assert.deepEqual(lot.max_far, { residential: 4, commercial: 0, community_facility: 4 });
 });
 
-test('unused floor area: overbuilt lot reports zero and flags it (Empire State Building)', () => {
+test('the formerly flagged Empire State Building has no capacity or compliance inference', () => {
   const lot = mapPlutoRow(JSON.parse(fx('pluto_1008350041.json')), '1008350041');
+  assertNoCapacity(lot);
   assert.equal(lot.split_zone, true);
-  assert.equal(lot.unused_floor_area.estimate_sqft, 0);
-  assert.equal(lot.unused_floor_area.overbuilt, true);
-  assert.ok(lot.unused_floor_area.caveats.some((c) => /more than one zoning district/.test(c)));
+  assert.deepEqual(lot.zoning_districts, ['C5-3', 'C6-4.5']);
   assert.ok(lot.landmark);
 });
 
-test('unused floor area: missing inputs give no estimate rather than a number', () => {
-  const none = { residential: null, commercial: null, community_facility: null };
-  assert.equal(computeUnusedFloorArea(1000, 500, none, false).estimate_sqft, null);
-  assert.equal(computeUnusedFloorArea(null, 500, { ...none, residential: 2 }, false).estimate_sqft, null);
-  assert.equal(computeUnusedFloorArea(1000, 500, { ...none, commercial: 2 }, false).estimate_sqft, 1500);
+test('multiple recorded districts cannot yield capacity even when splitzone is false', () => {
+  const raw = { ...JSON.parse(fx('pluto_1008350041.json')), splitzone: false };
+  const lot = mapPlutoRow(raw, '1008350041');
+  assert.equal(lot.split_zone, false);
+  assert.equal(lot.zoning_districts.length, 2);
+  assertNoCapacity(lot);
 });
 
-test('unused floor area: a C5-3 style lot built above residential FAR but within commercial FAR is not flagged overbuilt', () => {
-  const u = computeUnusedFloorArea(10000, 120000, { residential: 10, commercial: 15, community_facility: 0 }, false);
-  assert.equal(u.overbuilt, false);
-  assert.equal(u.estimate_sqft, 0);
-  assert.match(u.basis, /commercial/);
-  assert.ok(u.caveats.some((c) => /gross area/.test(c)));
+test('missing, residential, commercial and community-facility inputs all leave capacity undetermined', () => {
+  for (const fields of [
+    {},
+    { lotarea: 1000, bldgarea: 500, commfar: 2 },
+    { lotarea: 10000, bldgarea: 120000, residfar: 10, commfar: 15, facilfar: 0 },
+    { lotarea: 10000, bldgarea: 5000, residfar: 2.43, commfar: 0, facilfar: 4.8 },
+  ]) assertNoCapacity(mapPlutoRow(fields, '3000000001'));
 });
 
-test('unused floor area: community-facility FAR does not inflate a residential lot headline', () => {
-  const u = computeUnusedFloorArea(10000, 5000, { residential: 2.43, commercial: 0, community_facility: 4.8 }, false);
-  assert.equal(u.allowed_floor_area_sqft, 24300);
-  assert.equal(u.estimate_sqft, 19300);
-  assert.equal(u.overbuilt, false);
-  assert.match(u.basis, /residential FAR 2\.43/);
+test('parseVintage leaves a missing or malformed release stamp unknown', () => {
+  for (const html of ['<html>no stamp</html>', '<p>MapPLUTO release current</p>', '<script>MapPLUTO 26v2</script>']) {
+    assert.deepEqual(parseVintage(html), { release: null, checkedOn: null });
+  }
 });

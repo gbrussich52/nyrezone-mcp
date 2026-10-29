@@ -1,11 +1,12 @@
 # nyrezone-mcp
 
-Read-only [MCP](https://modelcontextprotocol.io) server that gives AI assistants recorded NYC lot fields and simplified screening calculations from public [NYRezone](https://nyrezone.com) pages and APIs: zoning districts, MapPLUTO FAR fields, lot and gross building area, a calculated floor-area estimate, and district summaries as published by NYRezone.
+Read-only [MCP](https://modelcontextprotocol.io) server that gives AI assistants recorded NYC lot fields from public [NYRezone](https://nyrezone.com) pages and APIs: zoning districts, MapPLUTO FAR fields, lot and gross building area, and district summaries as published by NYRezone.
 
-This legacy `nyrezone-mcp@0.1.0` package runs over stdio in a compatible local MCP
-client. It is separate from NYRezone's hosted ChatGPT facts app. Its calculations
-and scraped district summaries are not parcel-specific legal capacity determinations
-or a certification that every district rule is current.
+The legacy stdio package is separate from NYRezone's hosted ChatGPT facts app.
+Version 0.2.0 removes the previous floor-area calculations. Recorded parcel data
+and scraped district summaries do not determine parcel-specific legal capacity,
+unused development rights or zoning compliance, or certify that every district
+rule is current.
 
 It exposes only data that is already public and unauthenticated. No owner names, no assessed values, no paid report data, no account access.
 
@@ -41,13 +42,14 @@ All tools are read-only (`readOnlyHint: true`).
 
 | Tool | Input | Returns |
 |---|---|---|
-| `lookup_lot` | `address` (starts with a house number, include the borough) **or** `bbl` (10-digit borough-block-lot) | Recorded zoning district(s), overlays, special districts and FAR fields, lot/gross building area, a screening estimate, year built and land use. Ambiguous or unknown address matches return an error. |
+| `lookup_lot` | `address` (starts with a house number, include the borough) **or** `bbl` (10-digit borough-block-lot) | Recorded zoning district(s), overlays, special districts and FAR fields, lot/gross building area, year built and land use. Deprecated capacity calculation fields are retained as null. Ambiguous or unknown address matches return an error. |
 | `get_zoning_district` | `code`, e.g. `R6A`, `C4-2`, `M1-2/R6A` | FAR, height rules and bonuses as NYRezone publishes them, citywide lot counts, average built FAR. Unknown code returns the list of valid codes. |
 | `list_zoning_districts` | optional `family`, e.g. `R6` | The 51 districts NYRezone documents, each with its district-family description. |
 
 Every successful result includes a source line and disclaimer. The MapPLUTO release
-label is read from NYRezone's methodology page, not independently established by
-each lookup. District rules are parsed from NYRezone's pages, not fetched directly
+label for lot lookups is reported by NYRezone's methodology page; district lookups
+use the label on the district page. Neither is independently validated for the
+returned parcel or result. A missing or unavailable release stamp is `unknown`. District rules are parsed from NYRezone's pages, not fetched directly
 from the Zoning Resolution. The legacy `Full report` link opens the public lot map;
 it does not return paid report data.
 
@@ -55,33 +57,42 @@ Not included: a borough-level "underbuilt" summary. NYRezone publishes that only
 
 ### Example
 
-`lookup_lot` with `bbl: "3052410015"` returns, in part: zoning R7A, lot area 4,675 sq ft, building area 2,606 sq ft, built FAR 0.56 against a 4.0 residential maximum, and an estimated 16,094 sq ft unused.
+`lookup_lot` with `bbl: "3052410015"` returns, in part: recorded zoning R7A,
+lot area 4,675 sq ft, gross building area 2,606 sq ft, built FAR 0.56 and a
+MapPLUTO residential FAR field of 4.0. It does not calculate capacity from those
+fields. Its `unused_floor_area` compatibility object includes:
 
-## How the unused-floor-area estimate works
+```json
+{
+  "estimate_sqft": null,
+  "allowed_floor_area_sqft": null,
+  "governing_far": null,
+  "overbuilt": null,
+  "basis": "not determined from recorded parcel data"
+}
+```
 
-The headline is `max(0, residential FAR x lot area - gross building area)`, using
-MapPLUTO's recorded residential FAR when positive. If no positive residential FAR
-is listed, it uses the highest positive commercial/community-facility FAR. The
-`overbuilt` flag separately compares gross building area with the highest listed
-FAR across all three use categories. A zero headline therefore does not necessarily
-set that flag or mean no commercial floor-area difference exists.
+The object also includes `caveats` describing the limits below.
 
-This is a screening calculation, not recorded unused development rights. The legacy
-field `allowed_floor_area_sqft` and output phrase `sq ft allowed` describe that
-simple FAR multiplication, **not legally allowed floor area**. Gross building area
-is not zoning floor area; even `overbuilt: true` is not evidence of non-compliance.
-No runtime output names or calculations were changed by this documentation update.
+## Capacity is not determined
 
-The calculation does not account for street width, special districts, overlays,
-split-zoned lot geometry, mapped streets or City of Yes / Universal Affordability
-Preference bonuses. Split lots still receive a numeric estimate and a warning;
-that warning does not validate the estimated capacity. Confirm applicable use,
-district boundaries, current rules and zoning floor area with an appropriate
-professional before relying on a development-capacity figure.
+The previous release multiplied recorded FAR by lot area and subtracted gross
+building area. Version 0.2.0 removes that arithmetic for every lot, including
+split-zoned lots and records with multiple districts but no split-zone flag.
+The four deprecated fields above remain present and always null; their output
+schema accepts null. Consumers that assumed a numeric estimate or boolean flag
+must handle null.
+
+Gross building area is not zoning floor area. Recorded FAR fields alone do not
+establish applicable FAR or legally permitted floor area. District boundaries,
+split-zone geometry, applicable uses, special districts, overlays, bonuses,
+zoning-lot history and current rules require separate verification. The tool
+returns the recorded district and FAR facts without deciding capacity, unused
+development rights or compliance.
 
 ## Data sources and what leaves your machine
 
-- **nyrezone.com** (`/api/pluto`, `/zoning`, `/zoning/<code>`, `/methodology`): lot data and district pages. Data is NYC DCP MapPLUTO; the release is read from NYRezone's own methodology page.
+- **nyrezone.com** (`/api/pluto`, `/zoning`, `/zoning/<code>`, `/methodology`): lot data and district pages. The lot endpoint supplies MapPLUTO fields; HTML district summaries are NYRezone's presentation, not direct Zoning Resolution verification. Release labels and check stamps are reported by the site, not independently validated for each returned parcel.
 - **NYC Planning Labs Geosearch** (`geosearch.planninglabs.nyc`): used only to turn a street address into a BBL, because NYRezone has no address endpoint. This is the one third-party host; the address you ask about is sent to it. BBL lookups and district lookups never contact it.
 
 The owner name and owner type that NYRezone's lot API returns are dropped in this server and never appear in a tool result.

@@ -5,9 +5,9 @@ import { getDistrict, listDistricts, lookupLot, type Outcome } from './service.j
 
 const INSTRUCTIONS = [
   'Read-only access to public NYC zoning data via NYRezone (nyrezone.com), which is built on NYC MapPLUTO.',
-  'Tools: lookup_lot (a tax lot by address or 10-digit BBL), get_zoning_district (rules for one zoning code), list_zoning_districts.',
+  'Tools: lookup_lot (a tax lot by address or 10-digit BBL), get_zoning_district (NYRezone HTML summary for one zoning code), list_zoning_districts.',
   'Report only what the tools return and always keep the source line and disclaimer with it.',
-  'Unused floor area is a simplified FAR-based estimate, not a legal buildable-area determination; say so.',
+  'Recorded FAR and gross building area do not determine development capacity, unused development rights or zoning compliance. Deprecated unused_floor_area calculation fields are always null.',
   'If a tool reports an ambiguous or unknown input, ask the user to clarify rather than guessing.',
 ].join(' ');
 
@@ -42,10 +42,10 @@ const lotSchema = z.object({
   built_far: z.number().nullable(),
   max_far: z.object({ residential: z.number().nullable(), commercial: z.number().nullable(), community_facility: z.number().nullable() }),
   unused_floor_area: z.object({
-    estimate_sqft: z.number().nullable(),
-    overbuilt: z.boolean(),
-    allowed_floor_area_sqft: z.number().nullable(),
-    governing_far: z.number().nullable(),
+    estimate_sqft: z.null().describe('Deprecated; capacity is not determined from recorded parcel data.'),
+    overbuilt: z.null().describe('Deprecated; zoning compliance is not determined from gross building area.'),
+    allowed_floor_area_sqft: z.null().describe('Deprecated; legally permitted floor area is not determined.'),
+    governing_far: z.null().describe('Deprecated; applicable FAR is not determined.'),
     basis: z.string(),
     caveats: z.array(z.string()),
   }),
@@ -63,7 +63,7 @@ export function createServer(clientOptions: ClientOptions = {}): McpServer {
     {
       title: 'Look up an NYC tax lot',
       description:
-        'Look up one NYC tax lot by street address OR 10-digit BBL (borough-block-lot). Returns zoning district(s), built vs. allowed FAR, lot and building area, an estimated unused floor area, year built and land use, from MapPLUTO via NYRezone. Provide exactly one of address or bbl. Addresses must start with a house number and should include the borough; an ambiguous or unknown address returns an error instead of a guess. Owner and assessment data are never returned.',
+        'Look up one NYC tax lot by street address OR 10-digit BBL (borough-block-lot). Returns recorded zoning district(s), MapPLUTO FAR fields, lot and gross building area, year built and land use via NYRezone. Does not determine development capacity, unused development rights, applicable FAR or zoning compliance; deprecated calculation fields are null. Provide exactly one of address or bbl. Addresses must start with a house number and should include the borough; an ambiguous or unknown address returns an error instead of a guess. Owner and assessment data are never returned.',
       inputSchema: z.object({
         address: z.string().optional().describe('Street address starting with a house number, e.g. "1187 Ocean Ave, Brooklyn".'),
         bbl: z.string().optional().describe('10-digit BBL, e.g. 3052410015 (1 Manhattan, 2 Bronx, 3 Brooklyn, 4 Queens, 5 Staten Island).'),
@@ -86,7 +86,7 @@ export function createServer(clientOptions: ClientOptions = {}): McpServer {
     {
       title: 'Get an NYC zoning district',
       description:
-        'Get the rules NYRezone publishes for one NYC zoning district code (e.g. R6A, C4-2, M1-2/R6A): max FAR, base and maximum height, bonuses, citywide lot counts and average built FAR. Height/setback detail is only what NYRezone publishes for that district. An unknown code returns the list of valid codes.',
+        'Get the HTML district summary NYRezone publishes for one NYC zoning district code (e.g. R6A, C4-2, M1-2/R6A): max FAR, base and maximum height, bonuses, citywide lot counts and average built FAR. Values are scraped NYRezone summaries, not independently verified against the Zoning Resolution or applied to a parcel. An unknown code returns the list of valid codes.',
       inputSchema: z.object({ code: z.string().describe('Zoning district code such as R6A, R7-2, C4-2 or M1-2/R6A (case-insensitive).') }),
       outputSchema: z.object({
         code: z.string(),

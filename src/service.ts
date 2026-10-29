@@ -7,7 +7,9 @@ import { InputError, mapPlutoRow, parseBbl, type LotRecord } from './lot.js';
 import { ParseError, parseDistrictPage, parseVintage, parseZoningIndex, type DistrictIndexEntry, type DistrictPage } from './parse.js';
 
 export const DISCLAIMER = 'Informational only; not legal, architectural, or zoning-compliance advice. Confirm with NYC Department of City Planning / a licensed professional before relying on it.';
-const FALLBACK_VINTAGE = 'NYC MapPLUTO (release as stated at https://nyrezone.com/methodology)';
+function reportedVintage(release: string | null, checkedOn: string | null): string {
+  return `MapPLUTO release reported by NYRezone: ${release ?? 'unknown'}${checkedOn ? ` (site check stamp: ${checkedOn})` : ''}; not independently validated for this result`;
+}
 
 export type Outcome<T> = { ok: true; text: string; data: T } | { ok: false; error: string };
 
@@ -34,12 +36,12 @@ async function vintage(client: HttpClient): Promise<string> {
     const res = await client.getText(`${client.nyrezoneBase}/methodology`, 'text/html');
     if (res.status === 200) {
       const v = parseVintage(res.body);
-      if (v.release) return v.checkedOn ? `NYC ${v.release} (checked ${v.checkedOn})` : `NYC ${v.release}`;
+      return reportedVintage(v.release, v.checkedOn);
     }
   } catch {
-    // The vintage line is a nicety; never fail a lookup over it.
+    // Preserve the lookup, but explicitly report an unknown release when the source is unavailable.
   }
-  return FALLBACK_VINTAGE;
+  return reportedVintage(null, null);
 }
 
 const districtUrl = (client: HttpClient, slug: string) => `${client.nyrezoneBase}/zoning/${slug}`;
@@ -106,10 +108,10 @@ export async function getDistrict(client: HttpClient, rawCode: string): Promise<
     if (res.status === 404) return fail(`NYRezone has no page for ${entry.code} right now.`);
     const page = parseDistrictPage(res.body);
     const rulesNote = page.rules.length === 0
-      ? 'NYRezone publishes parcel statistics but no verified bulk/height/setback rules for this district; consult the Zoning Resolution.'
+      ? 'NYRezone publishes parcel statistics but no bulk/height/setback rules table for this district; consult the Zoning Resolution.'
       : null;
-    const vint = page.dataVintage ? `NYC ${page.dataVintage}${page.dataCheckedOn ? ` (checked ${page.dataCheckedOn})` : ''}` : FALLBACK_VINTAGE;
-    const source = `Source: ${vint} via NYRezone; rule values from the NYC Zoning Resolution as shown on ${url}. ${DISCLAIMER}`;
+    const vint = reportedVintage(page.dataVintage, page.dataCheckedOn);
+    const source = `Source: NYRezone HTML district summary, ${url}. ${vint}. Rule values are as published by NYRezone, not independently verified against the NYC Zoning Resolution. ${DISCLAIMER}`;
 
     const out: string[] = [`${page.code} - ${page.summary}`, ''];
     if (page.rules.length) {
@@ -201,7 +203,7 @@ export async function lookupLot(client: HttpClient, q: LotQuery): Promise<Outcom
     }
     const slugs = lot.zoning_districts.map((z) => z.toLowerCase().replace(/\//g, '-')).filter((s) => known === null || known.has(s));
     const pages = slugs.map((s) => districtUrl(client, s));
-    const source = `Source: ${vint} via ${client.nyrezoneBase}. District pages: ${pages.join(', ') || 'n/a'}. Full report: ${reportUrl}. ${DISCLAIMER}`;
+    const source = `Source: NYRezone /api/pluto parcel records via ${client.nyrezoneBase}. ${vint}. District pages: ${pages.join(', ') || 'n/a'}. Full report: ${reportUrl}. ${DISCLAIMER}`;
 
     const u = lot.unused_floor_area;
     const lines = [
@@ -211,12 +213,8 @@ export async function lookupLot(client: HttpClient, q: LotQuery): Promise<Outcom
       lot.historic_district || lot.landmark ? `Historic: ${[lot.historic_district, lot.landmark].filter(Boolean).join('; ')}` : '',
       `Land use: ${lot.land_use ? `${lot.land_use.code} ${lot.land_use.label}` : 'unknown'}${lot.building_class ? `; building class ${lot.building_class}` : ''}`,
       `Lot area: ${fmt(lot.lot_area_sqft, ' sq ft')}; building area: ${fmt(lot.building_area_sqft, ' sq ft')}; floors: ${fmt(lot.num_floors)}; year built: ${lot.year_built ?? 'unknown'}; residential units: ${fmt(lot.residential_units)}`,
-      `FAR - built: ${fmt(lot.built_far)}; max residential: ${fmt(lot.max_far.residential)}; max commercial: ${fmt(lot.max_far.commercial)}; max community facility: ${fmt(lot.max_far.community_facility)}`,
-      u.estimate_sqft === null
-        ? `Unused floor area: not estimable. ${u.basis}`
-        : u.overbuilt
-          ? `Unused floor area: about 0 sq ft; existing gross building area (${fmt(lot.building_area_sqft)} sq ft) exceeds the highest FAR MapPLUTO lists (${u.governing_far} x lot area = ${fmt(u.allowed_floor_area_sqft)} sq ft). MapPLUTO building area is gross, not zoning floor area, so this is not evidence of non-compliance. ${u.basis}`
-          : `Unused floor area (estimate): about ${fmt(u.estimate_sqft, ' sq ft')} of ${fmt(u.allowed_floor_area_sqft)} sq ft allowed. ${u.basis}`,
+      `Recorded MapPLUTO FAR - built: ${fmt(lot.built_far)}; residential: ${fmt(lot.max_far.residential)}; commercial: ${fmt(lot.max_far.commercial)}; community facility: ${fmt(lot.max_far.community_facility)}`,
+      `Unused floor area / development capacity: ${u.basis}.`,
       `Caveat: ${u.caveats.join(' ')}`,
       '',
       source,
