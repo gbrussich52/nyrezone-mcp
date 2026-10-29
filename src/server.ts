@@ -72,7 +72,7 @@ export function createServer(clientOptions: ClientOptions = {}): McpServer {
         lot: lotSchema,
         resolved_from: z.enum(['bbl', 'address']),
         matched_address: z.string().nullable(),
-        full_report_url: z.string(),
+        full_report_url: z.string().describe('Legacy field name: public lot map URL; no paid report data'),
         district_pages: z.array(z.string()),
         source: z.string(),
       }),

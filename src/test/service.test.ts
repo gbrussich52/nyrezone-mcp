@@ -28,7 +28,7 @@ test('lookup_lot by BBL returns recorded zoning, FAR and areas without capacity 
   assert.doesNotMatch(text, /16,094|sq ft allowed|overbuilt|FAR-based estimate/i);
   assert.match(text, /MapPLUTO release reported by NYRezone: MapPLUTO 26v2/);
   assert.match(text, /https:\/\/nyrezone\.com\/zoning\/r7a/);
-  assert.match(text, /Full report: https:\/\/nyrezone\.com\/map\?bbl=3052410015/);
+  assert.match(text, /Public lot map: https:\/\/nyrezone\.com\/map\?bbl=3052410015/);
   assert.match(text, /not legal, architectural/);
   assert.ok(!/TEST OWNER NAME/i.test(text) && !/owner/i.test(text), 'no owner data in output');
   if (o.ok) assert.ok(!JSON.stringify(o.data).toLowerCase().includes('owner'));

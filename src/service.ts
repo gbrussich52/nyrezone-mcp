@@ -203,7 +203,7 @@ export async function lookupLot(client: HttpClient, q: LotQuery): Promise<Outcom
     }
     const slugs = lot.zoning_districts.map((z) => z.toLowerCase().replace(/\//g, '-')).filter((s) => known === null || known.has(s));
     const pages = slugs.map((s) => districtUrl(client, s));
-    const source = `Source: NYRezone /api/pluto parcel records via ${client.nyrezoneBase}. ${vint}. District pages: ${pages.join(', ') || 'n/a'}. Full report: ${reportUrl}. ${DISCLAIMER}`;
+    const source = `Source: NYRezone /api/pluto parcel records via ${client.nyrezoneBase}. ${vint}. District pages: ${pages.join(', ') || 'n/a'}. Public lot map: ${reportUrl}. ${DISCLAIMER}`;
 
     const u = lot.unused_floor_area;
     const lines = [

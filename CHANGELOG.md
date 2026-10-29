@@ -11,6 +11,8 @@
   output schema now declares these keys null; consumers must accept null.
 - Remove calculated capacity and compliance inferences from lot prose, tool
   descriptions, server instructions and package/registry descriptions.
+- Label the public map link `Public lot map`; preserve `full_report_url` as a
+  documented legacy field name that does not provide paid report data.
 - Identify district output as scraped NYRezone HTML summaries, without claiming
   direct verification against the NYC Zoning Resolution.
 - Identify release labels and check stamps as site-reported, not independently

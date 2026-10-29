@@ -50,8 +50,8 @@ Every successful result includes a source line and disclaimer. The MapPLUTO rele
 label for lot lookups is reported by NYRezone's methodology page; district lookups
 use the label on the district page. Neither is independently validated for the
 returned parcel or result. A missing or unavailable release stamp is `unknown`. District rules are parsed from NYRezone's pages, not fetched directly
-from the Zoning Resolution. The legacy `Full report` link opens the public lot map;
-it does not return paid report data.
+from the Zoning Resolution. The visible `Public lot map` link and legacy `full_report_url` field both open
+the public lot map; neither returns paid report data.
 
 Not included: a borough-level "underbuilt" summary. NYRezone publishes that only as web pages, not as a data endpoint.
 
